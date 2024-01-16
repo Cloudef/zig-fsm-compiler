@@ -11,9 +11,9 @@ pub const ExportOptions = struct {
 fn exportMachineInnerInner(_: std.mem.Allocator, fsm: machine.Mutable, writer: anytype, offset: usize, options: ExportOptions) !void {
     try writer.print("node[shape=point];in_{};\n", .{offset});
 
-    if (fsm.meta.bs.final.count() > 0) {
+    if (fsm.final.count() > 0) {
         try writer.print("node[shape={s} fixedsize=false];", .{options.final_state_shape});
-        var final_it = fsm.meta.bs.final.iterator(.{ .kind = .set, .direction = .forward });
+        var final_it = fsm.final.iterator(.{ .kind = .set, .direction = .forward });
         var needs_space = false;
         while (final_it.next()) |state| if (!fsm.isDangling(state, .singleton)) {
             try writer.print("{s}{}", .{ if (needs_space) " " else "", offset + state });
@@ -36,46 +36,10 @@ fn exportMachineInnerInner(_: std.mem.Allocator, fsm: machine.Mutable, writer: a
         const from = index / fsm.num_states;
         const to = index % fsm.num_states;
         try writer.print("{}->{}", .{ offset + from, offset + to });
-
         var name = std.BoundedArray(u8, 128){};
         var iter = fsm.eventTransitionIterator();
-        while (iter.nextFromToState(from, to)) |t| try name.append(@truncate(t.event));
-        const is_union = name.len > 1;
-
-        // TODO: make proper event formatter
-        if (std.mem.eql(u8, name.constSlice(), "abcdefghijklmnopqrstuvwxyz")) {
-            try name.resize(0);
-            try name.appendSlice("a-z");
-        } else if (std.mem.eql(u8, name.constSlice(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ")) {
-            try name.resize(0);
-            try name.appendSlice("A-Z");
-        } else if (std.mem.eql(u8, name.constSlice(), "\n")) {
-            try name.resize(0);
-            try name.appendSlice("\\\\n");
-        }
-
-        const is_print = blk: {
-            if (fsm.meta.bs.scalar.isSet(from)) break :blk false;
-            for (name.constSlice()) |ch| if (!std.ascii.isPrint(ch)) break :blk false;
-            break :blk true;
-        };
-
-        // TODO: make proper event formatter
-        if (is_print) {
-            if (is_union) {
-                if (fsm.meta.bs.negation.isSet(from)) try name.insert(0, '^');
-                try writer.print("[label=\"[{s}]\"]", .{name.constSlice()});
-            } else if (name.len > 0) {
-                try name.insert(0, '\'');
-                try name.append('\'');
-                if (fsm.meta.bs.negation.isSet(from)) try name.insert(0, '!');
-                try writer.print("[label=\"{s}\"]", .{name.constSlice()});
-            }
-        } else {
-            if (fsm.meta.bs.negation.isSet(from)) try name.insert(0, '!');
-            try writer.print("[label=\"{d}\"]", .{name.constSlice()});
-        }
-        try writer.print(";\n", .{});
+        while (iter.nextFromToState(from, to)) |t| try name.writer().print("{}", .{t});
+        try writer.print("[label=\"{s}\"];", .{name.constSlice()});
     }
 }
 

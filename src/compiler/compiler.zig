@@ -493,7 +493,7 @@ const Compiler = struct {
             const maybe_last: ?*machine.Mutable = if (stack.items.len > 0) &stack.items[stack.items.len - 1] else null;
             switch (tok.type) {
                 .RE_Char => try stack.append(allocator, try machine.Mutable.fromChar(u8, allocator, tok.payload.chr, ignore_case)),
-                .RE_Dot => try stack.append(allocator, (try self.findDeclDefined(allocator, "", "any")).?),
+                .RE_Dot => try stack.append(allocator, try (try self.findDeclDefined(allocator, "", "any")).?.clone(allocator)),
                 .RE_SqOpen, .RE_SqOpenNeg => {
                     const marker = tokens.marker();
                     _ = try tokens.untilClosed(&.{.RE_SqOpen, .RE_SqOpenNeg}, .RE_SqClose);
@@ -581,8 +581,8 @@ const Compiler = struct {
                     }
                 },
                 .TK_UInt => {
-                    const num = try std.fmt.parseInt(machine.Mutable.EventType, tok.payload.str, 10);
-                    try stack.append(allocator, try machine.Mutable.fromScalar(machine.Mutable.EventType, allocator, num));
+                    const num = try std.fmt.parseInt(machine.Mutable.EventScalar, tok.payload.str, 10);
+                    try stack.append(allocator, try machine.Mutable.fromScalar(machine.Mutable.EventScalar, allocator, num));
                 },
                 .TK_Literal => {
                     const fsm = blk: {
@@ -604,9 +604,9 @@ const Compiler = struct {
                 },
                 .RE_Slash => {
                     const marker = tokens.marker();
-                    _ = try tokens.untilType(&.{.RE_Slash});
+                    const end = try tokens.untilType(&.{.RE_Slash});
                     var iter: TokenIterator = .{ .tokens = tokens.capture(marker, 1) };
-                    const ignore_case = tok.payload.str[tok.payload.str.len - 1] == 'i';
+                    const ignore_case = end.payload.str[end.payload.str.len - 1] == 'i';
                     try stack.append(allocator, try self.compileReExpr(allocator, &iter, ignore_case));
                 },
                 .RE_SqOpen, .RE_SqOpenNeg => {

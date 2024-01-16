@@ -8,16 +8,7 @@ pub fn build(b: *std.Build) void {
     opts.addOption(bool, "tracing", b.option(bool, "tracing", "enable compiler operation tracing for better debugging") orelse false);
 
     const common = b.addModule("common", .{
-        .source_file = .{ .path = "src/common/common.zig" },
-        .dependencies = &.{},
-    });
-
-    const mod = b.addModule("fsm-compiler", .{
-        .source_file = .{ .path = "src/compiler/compiler.zig" },
-        .dependencies = &.{
-            .{ .name = "build_options", .module = opts.createModule() },
-            .{ .name = "common", .module = common },
-        },
+        .root_source_file = .{ .path = "src/common/common.zig" },
     });
 
     const lib = b.addStaticLibrary(.{
@@ -29,16 +20,24 @@ pub fn build(b: *std.Build) void {
     lib.installHeadersDirectory("src/compiler/todo-replace", "");
     lib.addCSourceFile(.{ .file = .{ .path = "src/compiler/todo-replace/rlscan.c" }, .flags = &.{ "-std=c99" } });
 
+    const mod = b.addModule("fsm-compiler", .{
+        .root_source_file = .{ .path = "src/compiler/compiler.zig" },
+        .imports = &.{
+            .{ .name = "build_options", .module = opts.createModule() },
+            .{ .name = "common", .module = common },
+        },
+    });
+    mod.linkLibrary(lib);
+
     {
         const frontend_exe = b.addExecutable(.{
-            .name = "run",
+            .name = "zig-fsm-compiler",
             .root_source_file = .{ .path = "src/frontend/main.zig" },
             .target = target,
             .optimize = optimize,
         });
-        frontend_exe.linkLibrary(lib);
-        frontend_exe.addModule("common", common);
-        frontend_exe.addModule("fsm-compiler", mod);
+        frontend_exe.root_module.addImport("common", common);
+        frontend_exe.root_module.addImport("fsm-compiler", mod);
         const frontend_run = b.addRunArtifact(frontend_exe);
         if (b.args) |args| frontend_run.addArgs(args);
         const run = b.step("run", "Run");

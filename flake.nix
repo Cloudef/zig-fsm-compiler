@@ -1,48 +1,79 @@
 {
-  description = "zig-fsm-compiler flake";
+  description = "Zig project flake";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs";
-    flake-utils.url = "github:numtide/flake-utils";
-    zig-stdenv.url = "github:Cloudef/nix-zig-stdenv";
+    zig2nix.url = "github:Cloudef/zig2nix";
   };
 
-  outputs = { flake-utils, nixpkgs, zig-stdenv, ... }:
-  (flake-utils.lib.eachDefaultSystem (system:
-    let
-      pkgs = nixpkgs.outputs.legacyPackages."${system}";
-      zig = zig-stdenv.versions.${system}.master;
-      app = deps: script: {
-        type = "app";
-        program = toString (pkgs.writeShellApplication {
-          name = "app";
-          runtimeInputs = [ zig ] ++ deps;
-          text = ''
-            # shellcheck disable=SC2059
-            error() { printf -- "error: $1" "''${@:1}" 1>&2; exit 1; }
-            [[ -f ./flake.nix ]] || error 'Run this from the project root'
-            export ZIG_BTRFS_WORKAROUND=1
-            ${script}
-            '';
-        }) + "/bin/app";
+  outputs = { zig2nix, ... }: let
+    flake-utils = zig2nix.inputs.flake-utils;
+  in (flake-utils.lib.eachDefaultSystem (system: let
+      # Zig flake helper
+      # Check the flake.nix in zig2nix project for more options:
+      # <https://github.com/Cloudef/zig2nix/blob/master/flake.nix>
+      env = zig2nix.outputs.zig-env.${system} { zig = zig2nix.outputs.packages.${system}.zig.master; };
+      doubles = env.pkgs.lib.systems.doubles.all;
+    in with builtins; with env.pkgs.lib; rec {
+      # nix build .#target.{nix-target}
+      # e.g. nix build .#target.x86_64-linux
+      packages.target = genAttrs doubles (target: env.packageForTarget target ({
+        src = ./.;
+
+        # Smaller binaries and avoids shipping glibc.
+        zigPreferMusl = true;
+
+        # This disables LD_LIBRARY_PATH mangling, binary patching etc...
+        # The package won't be usable inside nix.
+        zigDisableWrap = true;
+      }));
+
+      # nix build .
+      packages.default = packages.target.${system}.override {
+        # Prefer nix friendly settings.
+        zigPreferMusl = false;
+        zigDisableWrap = false;
       };
-    in {
-      # nix run
-      apps.default = app [] "zig build run -- \"$@\"";
+
+      # For bundling with nix bundle for running outside of nix
+      # example: https://github.com/ralismark/nix-appimage
+      apps.bundle.target = genAttrs doubles (target: let
+        pkg = packages.target.${target};
+      in {
+        type = "app";
+        program = "${pkg}/bin/zig-fsm-compiler";
+      });
+
+      # default bundle
+      apps.bundle.default = apps.bundle.target.${system};
+
+      # nix run .
+      apps.default = env.app [] "zig build run -- \"$@\"";
+
+      # nix run .#build
+      apps.build = env.app [] "zig build \"$@\"";
 
       # nix run .#test
-      apps.test = app [] "zig build test";
+      apps.test = env.app [] "zig build test -- \"$@\"";
 
       # nix run .#docs
-      apps.docs = app [] "zig build docs";
+      apps.docs = env.app [] "zig build docs -- \"$@\"";
 
-      # nix run .#version
-      apps.version = app [] "zig version";
+      # nix run .#zon2json
+      apps.zon2json = env.app [env.zon2json] "zon2json \"$@\"";
+
+      # nix run .#zon2json-lock
+      apps.zon2json-lock = env.app [env.zon2json-lock] "zon2json-lock \"$@\"";
+
+      # nix run .#zon2nix
+      apps.zon2nix = env.app [env.zon2nix] "zon2nix \"$@\"";
+
+      # nix develop
+      devShells.default = env.shell;
 
       # nix run .#readme
       apps.readme = let
         project = "zig-fsm-compiler";
-      in with pkgs; app [graphviz] (builtins.replaceStrings ["`"] ["\\`"] ''
+      in with env.pkgs; env.app [graphviz] (builtins.replaceStrings ["`"] ["\\`"] ''
       function graph() {
         mkdir -p images
         (printf -- '%%%%{machine %s;main:=%s;}%%%%' "$2" "$1" | zig build run -- -Vp | dot -Tpng -oimages/fsm-"$2".png)
@@ -155,11 +186,5 @@
       $(graph '[a-z]+' "repetition")
       EOF
       '');
-
-      # nix develop
-      devShells.default = pkgs.mkShell {
-        buildInputs = [ zig ];
-        shellHook = "export ZIG_BTRFS_WORKAROUND=1";
-      };
     }));
 }
