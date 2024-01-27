@@ -11,12 +11,12 @@
       # Zig flake helper
       # Check the flake.nix in zig2nix project for more options:
       # <https://github.com/Cloudef/zig2nix/blob/master/flake.nix>
-      env = zig2nix.outputs.zig-env.${system} { zig = zig2nix.outputs.packages.${system}.zig.master; };
-      doubles = env.pkgs.lib.systems.doubles.all;
-    in with builtins; with env.pkgs.lib; rec {
+      env = zig2nix.outputs.zig-env.${system} { zig = zig2nix.outputs.packages.${system}.zig.master.bin; };
+      system-triple = env.lib.zigTripleFromString system;
+    in with builtins; with env.lib; with env.pkgs.lib; rec {
       # nix build .#target.{nix-target}
       # e.g. nix build .#target.x86_64-linux
-      packages.target = genAttrs doubles (target: env.packageForTarget target ({
+      packages.target = genAttrs allTargetTriples (target: env.packageForTarget target ({
         src = ./.;
 
         # Smaller binaries and avoids shipping glibc.
@@ -28,7 +28,7 @@
       }));
 
       # nix build .
-      packages.default = packages.target.${system}.override {
+      packages.default = packages.target.${system-triple}.override {
         # Prefer nix friendly settings.
         zigPreferMusl = false;
         zigDisableWrap = false;
@@ -36,7 +36,7 @@
 
       # For bundling with nix bundle for running outside of nix
       # example: https://github.com/ralismark/nix-appimage
-      apps.bundle.target = genAttrs doubles (target: let
+      apps.bundle.target = genAttrs allTargetTriples (target: let
         pkg = packages.target.${target};
       in {
         type = "app";
@@ -44,7 +44,7 @@
       });
 
       # default bundle
-      apps.bundle.default = apps.bundle.target.${system};
+      apps.bundle.default = apps.bundle.target.${system-triple};
 
       # nix run .
       apps.default = env.app [] "zig build run -- \"$@\"";
