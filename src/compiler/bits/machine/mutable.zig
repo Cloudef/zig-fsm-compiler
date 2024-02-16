@@ -14,32 +14,39 @@ const TraceOperations = blk: {
     break :blk std.ArrayListUnmanaged(op);
 };
 
-const Event = union (enum) {
-    any: void,
-    nil: void,
-    eql: EventScalar,
-    nql: EventScalar,
+const EventType = enum {
+    any,
+    nil,
+    eql,
+    nql,
+};
+
+const PackedTransition = packed struct {
+    type: EventType,
+    event: EventScalar,
+    to: StateScalar,
+};
+
+const EventFormat = enum {
+    auto,
+    digit,
 };
 
 const EventTransition = struct {
-    event: Event,
-    fmt: enum {
-        auto,
-        digit,
-    } = .auto,
+    fmt: EventFormat = .auto,
     from: StateScalar,
-    to: StateScalar,
+    detail: PackedTransition,
 
-    fn fmt(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        switch (self.event) {
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        switch (self.detail.type) {
             .any => return writer.print("ANY", .{}),
             .nil => return writer.print("NUL", .{}),
-            .eql, .neql => {},
+            .eql, .nql => {},
         }
 
-        const scalar = switch (self.event) {
-            .eql => |v| v,
-            .neql => |v| v,
+        const scalar = switch (self.detail.type) {
+            .eql => self.detail.event,
+            .nql => self.detail.event,
             .any, .nil => unreachable,
         };
 
@@ -101,7 +108,7 @@ pub fn clone(self: @This(), allocator: std.mem.Allocator) !@This() {
 
     if (Tracing) {
         new.operations = try self.operations.clone(allocator);
-        for (new.operations.items) |*op| op.result = try op.result.clone(allocator );
+        for (new.operations.items) |*op| op.result = try op.result.clone(allocator);
     }
 
     return new;
@@ -141,14 +148,14 @@ pub fn isDangling(self: @This(), state: StateScalar, kind: DanglingType) bool {
 }
 
 pub fn connect(self: *@This(), from: StateScalar, to: StateScalar) !void {
-    log.debug("connect {} -> {}", .{from, to});
+    log.debug("connect {} -> {}", .{ from, to });
     const off = (from * self.num_states) + to;
     if (self.states.isSet(off)) return error.ConnectionAlreadyDefined;
     self.states.set(off);
 }
 
 pub fn unlink(self: *@This(), from: StateScalar, to: StateScalar) !void {
-    log.debug("unlink {} -> {}", .{from, to});
+    log.debug("unlink {} -> {}", .{ from, to });
     const off = (from * self.num_states) + to;
     if (!self.states.isSet(off)) return error.ConnectionNotDefined;
     self.states.unset(off);
@@ -172,7 +179,7 @@ const EventTransitionIterator = struct {
     }
 
     pub fn nextFromToState(self: *@This(), from: StateScalar, to: StateScalar) ?*EventTransition {
-        while (self.nextFromState(from)) |res| if (res.to == to) return res;
+        while (self.nextFromState(from)) |res| if (res.detail.to == to) return res;
         return null;
     }
 
@@ -204,18 +211,18 @@ pub fn eventTransitionIterator(self: *const @This()) EventTransitionIterator {
 }
 
 pub fn defineEventTransition(self: *@This(), allocator: std.mem.Allocator, et: EventTransition) !void {
-    if (!self.isConnected(et.from, et.to)) return error.ConnectionNotDefined;
+    if (!self.isConnected(et.from, et.detail.to)) return error.ConnectionNotDefined;
     for (self.events.items) |ev| {
-        if (ev.from == et.from and std.meta.eql(et.event, ev.event)) {
+        if (ev.from == et.from and std.meta.eql(et.detail, ev.detail)) {
             return error.EventTransitionAlreadyDefined;
         }
     }
     try self.events.append(allocator, et);
 }
 
-pub fn removeEventTransition(self: *@This(), event: Event, from: StateScalar) !void {
+pub fn removeEventTransition(self: *@This(), t: EventTransition) !void {
     for (self.events.items, 0..) |ev, i| {
-        if (ev.from == from and std.meta.eql(event, ev.event)) {
+        if (ev.from == t.from and std.meta.eql(t.detail, ev.detail)) {
             _ = self.events.orderedRemove(i);
             return;
         }
@@ -224,7 +231,7 @@ pub fn removeEventTransition(self: *@This(), event: Event, from: StateScalar) !v
 }
 
 pub fn connectWithEventTransition(self: *@This(), allocator: std.mem.Allocator, et: EventTransition) !void {
-    try self.connect(et.from, et.to);
+    try self.connect(et.from, et.detail.to);
     try self.defineEventTransition(allocator, et);
 }
 
@@ -235,15 +242,15 @@ pub const UnlinkOption = enum {
     force,
 };
 
-pub fn unlinkWithEventTransition(self: *@This(), event: Event, from: StateScalar, to: StateScalar, option: UnlinkOption) !void {
-    try self.removeEventTransition(event, from);
+pub fn unlinkWithEventTransition(self: *@This(), t: EventTransition, option: UnlinkOption) !void {
+    try self.removeEventTransition(t);
     switch (option) {
         .eventless => {
             var event_it = self.eventTransitionIterator();
-            while (event_it.nextFromToState(from, to)) |_| return;
-            try self.unlink(from, to);
+            while (event_it.nextFromToState(t.from, t.detail.to)) |_| return;
+            try self.unlink(t.from, t.detail.to);
         },
-        .force => try self.unlink(from, to),
+        .force => try self.unlink(t.from, t.detail.to),
     }
 }
 
@@ -267,7 +274,7 @@ pub fn combine(allocator: std.mem.Allocator, machines: []const @This(), options:
     var new = try init(allocator, num_states);
     errdefer new.deinit(allocator);
 
-    log.debug("{s} {}: {}", .{@tagName(options.mode), machines.len, num_states});
+    log.debug("{s} {}: {}", .{ @tagName(options.mode), machines.len, num_states });
 
     for (machines) |fsm| {
         var state_it = fsm.states.iterator(.{ .kind = .set, .direction = .forward });
@@ -281,10 +288,9 @@ pub fn combine(allocator: std.mem.Allocator, machines: []const @This(), options:
             var event_it = fsm.eventTransitionIterator();
             while (event_it.nextFromState(state)) |t| {
                 try new.defineEventTransition(allocator, .{
-                    .event = t.event,
                     .fmt = t.fmt,
                     .from = offset + t.from,
-                    .to = offset + t.to,
+                    .detail = .{ .type = t.detail.type, .event = t.detail.event, .to = offset + t.detail.to },
                 });
             }
             if (fsm.final.isSet(state)) new.final.set(offset + state);
@@ -313,11 +319,11 @@ pub fn applyKleeneStar(self: *@This(), allocator: std.mem.Allocator) !void {
 
 pub fn applyNegation(self: *@This()) void {
     for (self.events.items) |*ev| {
-        ev.event = switch (ev.event) {
+        ev.detail.type = switch (ev.detail.type) {
             .any => .nil,
             .nil => .any,
-            .eql => |v| .{ .nql = v },
-            .nql => |v| .{ .eql = v },
+            .eql => .nql,
+            .nql => .eql,
         };
     }
 }
@@ -338,12 +344,16 @@ fn lowerOrUpperScalar(comptime T: type, scalar: T) !T {
 pub fn fromChar(comptime T: type, allocator: std.mem.Allocator, scalar: T, ignore_case: bool) !@This() {
     var self = try init(allocator, 2);
     errdefer self.deinit(allocator);
-    try self.connectWithEventTransition(allocator, .{ .event = .{ .eql = scalar }, .from = 0, .to = 1 });
+    try self.connectWithEventTransition(allocator, .{
+        .from = 0,
+        .detail = .{ .type = .eql, .event = scalar, .to = 1 },
+    });
     if (ignore_case) {
         const other = try lowerOrUpperScalar(T, scalar);
         if (other != scalar) {
             try self.defineEventTransition(allocator, .{
-                .event = .{ .eql = other }, .from = 0, .to = 1,
+                .from = 0,
+                .detail = .{ .type = .eql, .event = other, .to = 1 },
             });
         }
     }
@@ -366,12 +376,16 @@ pub fn fromSlice(comptime T: type, allocator: std.mem.Allocator, slice: []const 
     errdefer self.deinit(allocator);
 
     for (slice, 0..) |el, i| {
-        try self.connectWithEventTransition(allocator, .{ .event = .{ .eql = el }, .from = i, .to = i + 1 });
+        try self.connectWithEventTransition(allocator, .{
+            .from = i,
+            .detail = .{ .type = .eql, .event = el, .to = i + 1 },
+        });
         if (ignore_case) {
             const other = try lowerOrUpperScalar(T, el);
             if (other != el) {
                 try self.defineEventTransition(allocator, .{
-                    .event = .{ .eql = other }, .from = i, .to = i + 1,
+                    .from = i,
+                    .detail = .{ .type = .eql, .event = other, .to = i + 1 },
                 });
             }
         }
@@ -392,12 +406,16 @@ pub fn fromUnionSlice(comptime T: type, allocator: std.mem.Allocator, slice: []c
 
     try self.connect(0, 1);
     for (slice) |el| {
-        try self.defineEventTransition(allocator, .{ .event = .{ .eql = el }, .from = 0, .to = 1 });
+        try self.defineEventTransition(allocator, .{
+            .from = 0,
+            .detail = .{ .type = .eql, .event = el, .to = 1 },
+        });
         if (ignore_case) {
             const other = try lowerOrUpperScalar(T, el);
             if (other != el) {
                 try self.defineEventTransition(allocator, .{
-                    .event = .{ .eql = other }, .from = 0, .to = 1,
+                    .from = 0,
+                    .detail = .{ .type = .eql, .event = other, .to = 1 },
                 });
             }
         }
@@ -426,7 +444,7 @@ fn statesAreIdentical(self: @This(), a: StateScalar, b: StateScalar) bool {
 }
 
 const RemapOptions = struct {
-    const Shift = union (enum) {
+    const Shift = union(enum) {
         none: void,
         left: struct {
             from: StateScalar,
@@ -444,7 +462,7 @@ fn remap(self: *@This(), allocator: std.mem.Allocator, opts: RemapOptions) !void
         return;
     }
 
-    log.debug("remap: {} -> {}", .{opts.src_num_states, opts.dst_num_states});
+    log.debug("remap: {} -> {}", .{ opts.src_num_states, opts.dst_num_states });
 
     var new = try init(allocator, opts.dst_num_states);
     errdefer new.deinit(allocator);
@@ -462,7 +480,7 @@ fn remap(self: *@This(), allocator: std.mem.Allocator, opts: RemapOptions) !void
                 .right => |n| blk: {
                     if (state + n >= this.opts.dst_num_states) @panic("right shift overflow");
                     break :blk state + n;
-                }
+                },
             };
         }
     }{ .opts = opts };
@@ -480,10 +498,13 @@ fn remap(self: *@This(), allocator: std.mem.Allocator, opts: RemapOptions) !void
     var event_it = self.eventTransitionIterator();
     while (event_it.next()) |t| {
         try new.defineEventTransition(allocator, .{
-            .event = t.event,
             .fmt = t.fmt,
             .from = shifter.fun(t.from),
-            .to = shifter.fun(t.to),
+            .detail = .{
+                .type = t.detail.type,
+                .event = t.detail.event,
+                .to = shifter.fun(t.detail.to),
+            },
         });
     }
 
@@ -527,7 +548,7 @@ fn removeState(self: *@This(), allocator: std.mem.Allocator, state: StateScalar)
             self.states.unset(index);
             var iter = self.eventTransitionIterator();
             while (iter.nextFromToState(from, to)) |t| {
-                self.removeEventTransition(t.event, t.from) catch unreachable;
+                self.removeEventTransition(t.*) catch unreachable;
             }
         }
     }
@@ -535,20 +556,23 @@ fn removeState(self: *@This(), allocator: std.mem.Allocator, state: StateScalar)
 }
 
 fn inheritState(self: *@This(), allocator: std.mem.Allocator, src: StateScalar, dst: StateScalar) !void {
-    log.debug("copy {} -> {}", .{src, dst});
+    log.debug("copy {} -> {}", .{ src, dst });
     if (self.final.isSet(src)) self.final.set(dst);
 
     var event_it = self.eventTransitionIterator();
     while (event_it.nextFromState(src)) |t| {
-        if (t.to == t.from) {
-            self.unlinkWithEventTransition(t.event, t.from, t.to, .eventless) catch unreachable;
+        if (t.detail.to == t.from) {
+            self.unlinkWithEventTransition(t.*, .eventless) catch unreachable;
             self.connect(dst, dst) catch {};
         }
         try self.defineEventTransition(allocator, .{
-            .event = t.event,
             .fmt = t.fmt,
             .from = dst,
-            .to = if (t.to == t.from) dst else t.to,
+            .detail = .{
+                .type = t.detail.type,
+                .event = t.detail.event,
+                .to = if (t.detail.to == t.from) dst else t.detail.to,
+            },
         });
     }
 
@@ -565,24 +589,23 @@ fn epsilonDraw(self: *@This(), allocator: std.mem.Allocator, target: StateScalar
     var tgt_ev_it = self.eventTransitionIterator();
     while (eps_ev_it.nextFromState(epsilon)) |a| {
         while (tgt_ev_it.nextFromState(target)) |b| {
-            if (std.meta.eql(a.event, b.event) and a.to != b.to) {
-                log.debug("{} -> {}: same event transition, combination required", .{target, epsilon});
+            if (std.meta.eql(a.detail, b.detail)) {
+                log.debug("{} -> {}: same event transition, combination required", .{ target, epsilon });
                 const new_state = try self.addState(allocator);
                 var drawn: u8 = 0;
-                if (try self.epsilonDrawAndRemove(allocator, new_state, a.to)) {
-                    try self.unlinkWithEventTransition(a.event, a.from, a.to, .eventless);
+                if (try self.epsilonDrawAndRemove(allocator, new_state, a.detail.to)) {
+                    try self.unlinkWithEventTransition(a.*, .eventless);
                     drawn += 1;
                 }
-                if (try self.epsilonDrawAndRemove(allocator, new_state, b.to)) {
-                    try self.unlinkWithEventTransition(a.event, b.from, b.to, .eventless);
+                if (try self.epsilonDrawAndRemove(allocator, new_state, b.detail.to)) {
+                    try self.unlinkWithEventTransition(b.*, .eventless);
                     drawn += 1;
                 }
                 if (drawn == 2) {
                     try self.connectWithEventTransition(allocator, .{
-                        .event = a.event,
                         .fmt = a.fmt,
                         .from = a.from,
-                        .to = new_state,
+                        .detail = .{ .type = a.detail.type, .event = a.detail.event, .to = new_state },
                     });
                 }
                 const has_events = blk: {
@@ -591,7 +614,7 @@ fn epsilonDraw(self: *@This(), allocator: std.mem.Allocator, target: StateScalar
                     break :blk false;
                 };
                 if (!has_events) {
-                    log.debug("skipping draw: {} -> {} (epsilon turned dangling)", .{target, epsilon});
+                    log.debug("skipping draw: {} -> {} (epsilon turned dangling)", .{ target, epsilon });
                     return false;
                 }
             }
@@ -599,12 +622,12 @@ fn epsilonDraw(self: *@This(), allocator: std.mem.Allocator, target: StateScalar
     }
 
     if (!self.statePropertiesAreIdentical(target, epsilon)) {
-        log.debug("draw: {} -> {}", .{target, epsilon});
+        log.debug("draw: {} -> {}", .{ target, epsilon });
         try self.trace(allocator, "draw", epsilon, target);
         try self.inheritState(allocator, epsilon, target);
         return true;
     } else {
-        log.debug("skipping draw: {} -> {} (identical properties)", .{target, epsilon});
+        log.debug("skipping draw: {} -> {} (identical properties)", .{ target, epsilon });
         return false;
     }
 }
@@ -635,7 +658,7 @@ fn forwardConnections(self: *@This(), src: StateScalar, dst: StateScalar) void {
             self.unlink(child, src) catch unreachable;
             self.connect(child, dst) catch {};
             var event_it = self.eventTransitionIterator();
-            while (event_it.nextFromToState(child, src)) |t| t.to = dst;
+            while (event_it.nextFromToState(child, src)) |t| t.detail.to = dst;
         }
     }
 }
@@ -650,7 +673,7 @@ fn shrinkAndValidate(self: *@This(), allocator: std.mem.Allocator) !void {
         for (0..self.num_states) |state| {
             if (self.isDangling(state, .@"unreachable")) {
                 log.debug("prune dangling: {}", .{state});
-                try self.shift(allocator, .{ .left = .{ .from = state, .n = 1 }});
+                try self.shift(allocator, .{ .left = .{ .from = state, .n = 1 } });
                 pruned = true;
                 break;
             }
@@ -664,10 +687,10 @@ fn shrinkAndValidate(self: *@This(), allocator: std.mem.Allocator) !void {
             for (0..self.num_states) |b| if (a != b and self.statesAreIdentical(a, b)) {
                 const min = @min(a, b);
                 const max = @max(a, b);
-                log.debug("combine: {} -> {}", .{max, min});
+                log.debug("combine: {} -> {}", .{ max, min });
                 try self.trace(allocator, "combine", min, max);
                 self.forwardConnections(max, min);
-                try self.shift(allocator, .{ .left = .{ .from = max, .n = 1 }});
+                try self.shift(allocator, .{ .left = .{ .from = max, .n = 1 } });
                 combined = true;
                 break :outer;
             };
@@ -675,7 +698,7 @@ fn shrinkAndValidate(self: *@This(), allocator: std.mem.Allocator) !void {
         if (!combined) break;
     }
 
-    log.debug("after shrink: {} -> {}", .{old_num_states, self.num_states});
+    log.debug("after shrink: {} -> {}", .{ old_num_states, self.num_states });
 
     if (self.final.count() > 0) {
         var final_it = self.final.iterator(.{ .kind = .set, .direction = .forward });

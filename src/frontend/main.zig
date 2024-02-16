@@ -2,11 +2,11 @@ const std = @import("std");
 const compiler = @import("fsm-compiler");
 const graphviz = @import("graphviz.zig");
 
-pub const std_options = struct {
-    pub const log_level = .info;
-    pub const log_scope_levels = &[_]std.log.ScopeLevel{
-        .{ .scope = .mutable_machine, .level = .warn },
-    };
+pub const std_options = .{
+    .log_level = .info,
+    .log_scope_levels = &.{
+        .{ .scope = .mutable_machine, .level = .debug },
+    },
 };
 
 fn version() !void {
@@ -14,7 +14,7 @@ fn version() !void {
     try writer.print(
         \\{s} version {s}
         \\Copyright (c) 2024 by Vetoniemi Jari Juhani
-        ,.{ "zig-fsm-compiler", "1.0.0" });
+    , .{ "zig-fsm-compiler", "1.0.0" });
 }
 
 fn usage(writer: std.fs.File.Writer) !void {
@@ -37,7 +37,7 @@ fn usage(writer: std.fs.File.Writer) !void {
         \\   -p                   Display printable characters on labels
         \\   -S <spec>            FSM specification to output (for graphviz output)
         \\   -M <machine>         Machine definition/instantiation to output (for graphviz output)
-        ,.{ "zig-fsm-compiler" });
+    , .{"zig-fsm-compiler"});
 }
 
 fn graphvizExport(allocator: std.mem.Allocator, result: compiler.Result, machine: []const u8, spec: ?[]const u8, writer: std.fs.File.Writer) !void {
@@ -49,7 +49,7 @@ fn graphvizExport(allocator: std.mem.Allocator, result: compiler.Result, machine
         };
     };
     if (spec) |name| {
-        try std.io.getStdErr().writer().print("machine `{s}::{s}` is not defined", .{machine, name});
+        try std.io.getStdErr().writer().print("machine `{s}::{s}` is not defined", .{ machine, name });
         return error.InvalidUsage;
     }
     const i = result.instanced[result.instanced.len - 1];
@@ -124,7 +124,7 @@ pub fn main() !void {
                 for (arg[1..]) |a| switch (a) {
                     'h', 'H', '?' => return usage(std.io.getStdOut().writer()),
                     'v' => return version(),
-                    'o' => opts.output = try std.fs.cwd().openFile(iter.next().?, .{.mode = .write_only}),
+                    'o' => opts.output = try std.fs.cwd().openFile(iter.next().?, .{ .mode = .write_only }),
                     'I' => try includes.append(allocator, try std.fs.cwd().openDir(iter.next().?, .{})),
                     'V' => opts.graphviz = true,
                     'p' => opts.graphviz_print = true,
