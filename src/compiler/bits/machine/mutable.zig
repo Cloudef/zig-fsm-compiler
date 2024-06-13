@@ -14,7 +14,7 @@ const TraceOperations = blk: {
     break :blk std.ArrayListUnmanaged(op);
 };
 
-const EventType = enum {
+const EventType = enum (u8) {
     any,
     nil,
     eql,
