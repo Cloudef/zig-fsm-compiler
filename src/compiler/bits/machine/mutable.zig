@@ -14,7 +14,7 @@ const TraceOperations = blk: {
     break :blk std.ArrayListUnmanaged(op);
 };
 
-const EventType = enum {
+const EventType = enum (u4) {
     any,
     nil,
     eql,
@@ -220,16 +220,6 @@ pub fn defineEventTransition(self: *@This(), allocator: std.mem.Allocator, et: E
     try self.events.append(allocator, et);
 }
 
-pub fn removeEventTransition(self: *@This(), t: EventTransition) !void {
-    for (self.events.items, 0..) |ev, i| {
-        if (ev.from == t.from and std.meta.eql(t.detail, ev.detail)) {
-            _ = self.events.orderedRemove(i);
-            return;
-        }
-    }
-    return error.EventTransitionNotDefined;
-}
-
 pub fn connectWithEventTransition(self: *@This(), allocator: std.mem.Allocator, et: EventTransition) !void {
     try self.connect(et.from, et.detail.to);
     try self.defineEventTransition(allocator, et);
@@ -243,14 +233,26 @@ pub const UnlinkOption = enum {
 };
 
 pub fn unlinkWithEventTransition(self: *@This(), t: EventTransition, option: UnlinkOption) !void {
-    try self.removeEventTransition(t);
+    const from = t.from;
+    const to = t.detail.to;
+    var loop = true;
+    while (loop) {
+        loop = false;
+        for (self.events.items, 0..) |*b, i| {
+            if (t.from == b.from and std.meta.eql(t.detail, b.detail)) {
+                _ = self.events.orderedRemove(i);
+                loop = true;
+                break;
+            }
+        }
+    }
     switch (option) {
         .eventless => {
             var event_it = self.eventTransitionIterator();
-            while (event_it.nextFromToState(t.from, t.detail.to)) |_| return;
-            try self.unlink(t.from, t.detail.to);
+            while (event_it.nextFromToState(from, to)) |_| return;
+            try self.unlink(from, to);
         },
-        .force => try self.unlink(t.from, t.detail.to),
+        .force => try self.unlink(from, to),
     }
 }
 
@@ -540,19 +542,25 @@ fn addState(self: *@This(), allocator: std.mem.Allocator) !StateScalar {
 fn removeState(self: *@This(), allocator: std.mem.Allocator, state: StateScalar) void {
     log.debug("remove {}", .{state});
     self.trace(allocator, "remove", state, null) catch unreachable;
+
     var state_it = self.states.iterator(.{ .kind = .set, .direction = .forward });
     while (state_it.next()) |index| {
         const from = index / self.num_states;
-        const to = index % self.num_states;
-        if (from == state) {
-            self.states.unset(index);
-            var iter = self.eventTransitionIterator();
-            while (iter.nextFromToState(from, to)) |t| {
-                self.removeEventTransition(t.*) catch unreachable;
+        if (from == state) self.states.unset(index);
+    }
+    self.final.unset(state);
+
+    var loop = true;
+    while (loop) {
+        loop = false;
+        for (self.events.items, 0..) |*t, i| {
+            if (t.from == state) {
+                _ = self.events.orderedRemove(i);
+                loop = true;
+                break;
             }
         }
     }
-    self.final.unset(state);
 }
 
 fn inheritState(self: *@This(), allocator: std.mem.Allocator, src: StateScalar, dst: StateScalar) !void {

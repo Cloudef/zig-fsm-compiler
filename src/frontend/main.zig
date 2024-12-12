@@ -2,7 +2,7 @@ const std = @import("std");
 const compiler = @import("fsm-compiler");
 const graphviz = @import("graphviz.zig");
 
-pub const std_options = .{
+pub const std_options: std.Options = .{
     .log_level = .info,
     .log_scope_levels = &.{
         .{ .scope = .mutable_machine, .level = .debug },

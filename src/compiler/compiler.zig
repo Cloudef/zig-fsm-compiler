@@ -292,12 +292,12 @@ const Compiler = struct {
     decls: std.ArrayListUnmanaged(Decl) = .{},
     builtins: std.ArrayListUnmanaged(Builtin) = .{},
 
-    fn RangeSlice(comptime T: type, comptime min: T, comptime max: T) []const T {
+    fn RangeSlice(comptime T: type, comptime min: T, comptime max: T) [@as(usize, max - min) + 1]T {
         comptime std.debug.assert(min <= max);
-        const sz: usize = @as(usize, (max - min)) + 1;
+        const sz: usize = @as(usize, max - min) + 1;
         comptime var slice: [sz]T = undefined;
-        inline for (&slice, 0..) |*s, i| s.* = min + i;
-        return &slice;
+        inline for (slice[0..], 0..) |*s, i| s.* = min + i;
+        return slice;
     }
 
     fn init(allocator: std.mem.Allocator) !@This() {
@@ -315,62 +315,62 @@ const Compiler = struct {
         try self.builtins.append(allocator, .{
             .name = "ascii",
             // Ascii characters. 0..127
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, ascii, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, ascii[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "extend",
             // Ascii extended characters. 0..255
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, extend, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, extend[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "lower",
             // Lowercase characters. [a-z]
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, a_z, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, a_z[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "upper",
             // Uppercase characters. [A-Z]
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, A_Z, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, A_Z[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "alpha",
             // Alphabetic characters. [A-Za-z]
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, A_Z ++ a_z, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, (A_Z ++ a_z)[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "digit",
             // Digits. [0-9]
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, digit, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, digit[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "alnum",
             // Alpha numerics. [0-9A-Za-z]
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, digit ++ A_Z ++ a_z, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, (digit ++ A_Z ++ a_z)[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "xdigit",
             // Hexadecimal digits. [0-9A-Fa-f]
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, xdigit, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, xdigit[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "cntrl",
             // Control characters. 0..31
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, cntrl, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, cntrl[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "graph",
             // Graphical characters. [!-~]
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, graph, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, graph[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "print",
             // Printable characters. [ -~]
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, print, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, print[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "punct",
             // Punctuation. Graphical characters that are not alphanumerics. [!-/:-@[-‘{-~]
-            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, punct, false),
+            .machine = try machine.Mutable.fromUnionSlice(u8, allocator, punct[0..], false),
         });
         try self.builtins.append(allocator, .{
             .name = "space",
