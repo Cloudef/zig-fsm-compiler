@@ -23,11 +23,11 @@ fn exportMachineInnerInner(_: std.mem.Allocator, fsm: machine.Mutable, writer: a
     }
 
     try writer.print("node[shape={s} fixedsize=false];\n", .{options.state_shape});
-    try writer.print("in_{}->{}[label=IN];\n", .{offset, offset});
+    try writer.print("in_{}->{}[label=IN];\n", .{ offset, offset });
 
     if (offset > 0) {
         for (0..fsm.num_states) |state| if (!fsm.isDangling(state, .singleton)) {
-            try writer.print("{}[label={}];\n", .{offset + state, state});
+            try writer.print("{}[label={}];\n", .{ offset + state, state });
         };
     }
 
@@ -47,7 +47,7 @@ fn exportMachineInner(allocator: std.mem.Allocator, title: []const u8, fsm: mach
     var offset: usize = initial_offset;
     try writer.print("subgraph cluster_{}{{\n", .{offset});
     if (machine.Mutable.Tracing) {
-        try writer.print("label=<{}. result [ {s} ]>;\n", .{fsm.operations.items.len + 1, fsm.name});
+        try writer.print("label=<{}. result [ {s} ]>;\n", .{ fsm.operations.items.len + 1, fsm.name });
     } else {
         if (std.mem.count(u8, title, "\"") == 0) {
             try writer.print("label=\"{s}\";\n", .{title});
@@ -58,26 +58,26 @@ fn exportMachineInner(allocator: std.mem.Allocator, title: []const u8, fsm: mach
         }
     }
     try exportMachineInnerInner(allocator, fsm, writer, offset, options);
-    try writer.print("{}->{}[style=invis constraint=false];\n", .{offset, offset + fsm.num_states - 1});
+    try writer.print("{}->{}[style=invis constraint=false];\n", .{ offset, offset + fsm.num_states - 1 });
     try writer.print("}}\n", .{});
     offset += fsm.num_states;
     if (machine.Mutable.Tracing) {
         for (0..fsm.operations.items.len) |index| {
             const op = fsm.operations.items[(fsm.operations.items.len - 1) - index];
             try writer.print("subgraph cluster_{}{{\n", .{offset});
-            try writer.print("label=\"{}. {s}\";\n", .{fsm.operations.items.len - index, op.name});
+            try writer.print("label=\"{}. {s}\";\n", .{ fsm.operations.items.len - index, op.name });
             if (op.epsilon) |epsilon| {
                 try writer.print("node[color=red];{};\n", .{offset + epsilon});
-                try writer.print("{}[label={}];\n", .{offset + epsilon, epsilon});
+                try writer.print("{}[label={}];\n", .{ offset + epsilon, epsilon });
             }
             if (op.target) |target| {
                 try writer.print("node[color=blue];{};\n", .{offset + target});
-                try writer.print("{}[label={}];\n", .{offset + target, target});
-                try writer.print("{}->{}[style=dashed];\n", .{offset + target, offset + op.epsilon.?});
+                try writer.print("{}[label={}];\n", .{ offset + target, target });
+                try writer.print("{}->{}[style=dashed];\n", .{ offset + target, offset + op.epsilon.? });
             }
             try writer.print("node[color=black];\n", .{});
             try exportMachineInnerInner(allocator, op.result, writer, offset, options);
-            try writer.print("{}->{}[style=invis constraint=false];\n", .{offset, offset + op.result.num_states - 1});
+            try writer.print("{}->{}[style=invis constraint=false];\n", .{ offset, offset + op.result.num_states - 1 });
             try writer.print("}}\n", .{});
             offset += op.result.num_states;
         }

@@ -11,7 +11,7 @@ fn postfixToInfix(allocator: std.mem.Allocator, tokens: []const Token) ![]const 
         precedence: u8,
         assoc: enum { left, right } = .left,
         unary: bool = false,
-        grouping: union (enum) {
+        grouping: union(enum) {
             none: void,
             start: void,
             end: []const TokenType,
@@ -29,7 +29,7 @@ fn postfixToInfix(allocator: std.mem.Allocator, tokens: []const Token) ![]const 
         .{ .type = .TK_DashDash, .precedence = 2 }, // --
         // Concatenation
         .{ .type = .TK_Dot, .precedence = 3 }, // .
-        .{ .type = .TK_LtColon , .precedence = 3 }, // <:
+        .{ .type = .TK_LtColon, .precedence = 3 }, // <:
         .{ .type = .TK_ColonGt, .precedence = 3 }, // :>
         .{ .type = .TK_ColonGtGt, .precedence = 3 }, // :>>
         // Label
@@ -85,10 +85,10 @@ fn postfixToInfix(allocator: std.mem.Allocator, tokens: []const Token) ![]const 
         // TODO: unary
         .{ .type = .TK_Negation, .precedence = 8, .unary = true }, // !
         // Grouping
-        .{ .type = .TK_ParenOpen, .precedence = 9, .grouping = .{ .preserved = &.{ .TK_ParenClose } } }, // (
-        .{ .type = .RE_SqOpen, .precedence = 9, .grouping = .{ .preserved = &.{ .RE_SqClose } } }, // [
-        .{ .type = .RE_SqOpenNeg, .precedence = 9, .grouping = .{ .preserved = &.{ .RE_SqClose } } }, // [^
-        .{ .type = .RE_Slash, .precedence = 9, .grouping = .{ .preserved = &.{ .RE_Slash } } }, // /
+        .{ .type = .TK_ParenOpen, .precedence = 9, .grouping = .{ .preserved = &.{.TK_ParenClose} } }, // (
+        .{ .type = .RE_SqOpen, .precedence = 9, .grouping = .{ .preserved = &.{.RE_SqClose} } }, // [
+        .{ .type = .RE_SqOpenNeg, .precedence = 9, .grouping = .{ .preserved = &.{.RE_SqClose} } }, // [^
+        .{ .type = .RE_Slash, .precedence = 9, .grouping = .{ .preserved = &.{.RE_Slash} } }, // /
     };
 
     // TODO: optimize, instead of storing Operator just store the type
@@ -96,7 +96,7 @@ fn postfixToInfix(allocator: std.mem.Allocator, tokens: []const Token) ![]const 
     var outputs = std.ArrayListUnmanaged(Token){};
     errdefer outputs.deinit(allocator);
 
-    var iter = TokenIterator{.tokens = tokens};
+    var iter = TokenIterator{ .tokens = tokens };
     while (iter.next()) |tok| {
         const maybe_op: ?Operator = blk: {
             for (operators) |op| if (tok.type == op.type) break :blk op;
@@ -126,7 +126,8 @@ fn postfixToInfix(allocator: std.mem.Allocator, tokens: []const Token) ![]const 
                         const last = opstack.constSlice()[opstack.len - 1];
                         if (last.grouping == .none and
                             (last.precedence > op.precedence or
-                             (last.precedence == op.precedence and op.assoc == .left))) {
+                            (last.precedence == op.precedence and op.assoc == .left)))
+                        {
                             try outputs.append(allocator, .{ .type = opstack.pop().type });
                         } else break;
                     }
@@ -228,8 +229,7 @@ const TokenIterator = struct {
         var depth: usize = 1;
         while (depth > 0) {
             tok = try self.untilType(opening ++ .{closing});
-            if (std.mem.count(TokenType, opening, &.{tok.type}) > 0) depth += 1
-            else if (tok.type == closing) depth -= 1;
+            if (std.mem.count(TokenType, opening, &.{tok.type}) > 0) depth += 1 else if (tok.type == closing) depth -= 1;
         }
         return tok;
     }
@@ -237,7 +237,7 @@ const TokenIterator = struct {
     pub fn nextOfType(self: *@This(), expected: []const TokenType) !Token {
         if (self.next()) |tok| {
             for (expected) |ex| if (tok.type == ex) return tok;
-            log.err("unexpected token: got {}, expected {}", .{tok.type, std.json.fmt(expected, .{})});
+            log.err("unexpected token: got {}, expected {}", .{ tok.type, std.json.fmt(expected, .{}) });
         } else {
             log.err("unexpected token: got null, expected {}", .{std.json.fmt(expected, .{})});
         }
@@ -250,7 +250,7 @@ const Compiler = struct {
         body: []const Token,
     };
 
-    const LazyMachine = union (enum) {
+    const LazyMachine = union(enum) {
         expr: []const Token,
         compiled: machine.Mutable,
     };
@@ -258,11 +258,11 @@ const Compiler = struct {
     const Decl = struct {
         namespace: []const u8,
         name: []const u8,
-        value: union (enum) {
+        value: union(enum) {
             none: void,
             action: Action,
             defined: LazyMachine,
-            instanced: union (enum) {
+            instanced: union(enum) {
                 machine: machine.Mutable,
                 scanner: scanner.Mutable,
             },
@@ -435,7 +435,7 @@ const Compiler = struct {
                     .expr => |postfix| {
                         const expr = try postfixToInfix(allocator, postfix);
                         defer allocator.free(expr);
-                        var iter: TokenIterator = .{.tokens = expr};
+                        var iter: TokenIterator = .{ .tokens = expr };
                         d.* = .{ .compiled = try self.compileExpr(allocator, namespace, &iter, false) };
                         return d.compiled;
                     },
@@ -457,7 +457,7 @@ const Compiler = struct {
         defer inputs.deinit(allocator);
         while (tokens.next()) |tok| switch (tok.type) {
             .RE_Char => {
-                if (tokens.isSequence(&.{.RE_Dash, .RE_Char})) {
+                if (tokens.isSequence(&.{ .RE_Dash, .RE_Char })) {
                     const start = tok.payload.chr;
                     _ = try tokens.nextOfType(&.{.RE_Dash});
                     const end = (try tokens.nextOfType(&.{.RE_Char})).payload.chr;
@@ -496,7 +496,7 @@ const Compiler = struct {
                 .RE_Dot => try stack.append(allocator, try (try self.findDeclDefined(allocator, "", "any")).?.clone(allocator)),
                 .RE_SqOpen, .RE_SqOpenNeg => {
                     const marker = tokens.marker();
-                    _ = try tokens.untilClosed(&.{.RE_SqOpen, .RE_SqOpenNeg}, .RE_SqClose);
+                    _ = try tokens.untilClosed(&.{ .RE_SqOpen, .RE_SqOpenNeg }, .RE_SqClose);
                     var iter: TokenIterator = .{ .tokens = tokens.capture(marker, 1) };
                     try stack.append(allocator, try self.compileUnion(allocator, &iter, tok.type == .RE_SqOpenNeg, ignore_case));
                 },
@@ -512,7 +512,7 @@ const Compiler = struct {
             }
         }
 
-        return machine.Mutable.combine(allocator, stack.items, .{.mode = .concatetate});
+        return machine.Mutable.combine(allocator, stack.items, .{ .mode = .concatetate });
     }
 
     fn compileExpr(self: *@This(), allocator: std.mem.Allocator, namespace: []const u8, tokens: *TokenIterator, in_paren: bool) !machine.Mutable {
@@ -526,18 +526,16 @@ const Compiler = struct {
         while (tokens.next()) |tok| {
             const maybe_last: ?*machine.Mutable = if (stack.items.len > 0) &stack.items[stack.items.len - 1] else null;
             switch (tok.type) {
-                .TK_Gt, .TK_At, .TK_Dollar, .TK_Percent,
-                .TK_FinalEOF, .TK_FinalFromState, .TK_FinalGblError, .TK_FinalLocalError,
-                .TK_FinalToState => {
+                .TK_Gt, .TK_At, .TK_Dollar, .TK_Percent, .TK_FinalEOF, .TK_FinalFromState, .TK_FinalGblError, .TK_FinalLocalError, .TK_FinalToState => {
                     const ctok = try tokens.nextNotNull();
                     switch (ctok.type) {
                         // action
                         .TK_Word => {
-                            log.info("action {} {s}", .{tok.type, ctok.payload.str});
+                            log.info("action {} {s}", .{ tok.type, ctok.payload.str });
                         },
                         // static prio
                         .TK_UInt => {
-                            log.info("prio {} {s}", .{tok.type, ctok.payload.str});
+                            log.info("prio {} {s}", .{ tok.type, ctok.payload.str });
                         },
                         // defined prio
                         .TK_ParenTransitionOpen => {
@@ -545,7 +543,7 @@ const Compiler = struct {
                             _ = try tokens.nextOfType(&.{.TK_Comma});
                             const prio = try tokens.nextOfType(&.{.TK_UInt});
                             _ = try tokens.nextOfType(&.{.TK_ParenTransitionClose});
-                            log.info("prio {} {s} {s}", .{tok.type, name.payload.str, prio.payload.str});
+                            log.info("prio {} {s} {s}", .{ tok.type, name.payload.str, prio.payload.str });
                         },
                         else => try self.emitError(ctok),
                     }
@@ -558,7 +556,7 @@ const Compiler = struct {
                         var markers: std.BoundedArray(usize, 32) = .{};
                         try markers.append(tokens.marker());
                         while (markers.len > 0) {
-                            ctok = try tokens.untilType(&.{.TK_ParenOpen, .TK_ParenClose});
+                            ctok = try tokens.untilType(&.{ .TK_ParenOpen, .TK_ParenClose });
                             switch (ctok.type) {
                                 .TK_ParenOpen => try markers.append(tokens.marker()),
                                 .TK_ParenClose => {
@@ -588,7 +586,7 @@ const Compiler = struct {
                     const fsm = blk: {
                         const lit = tok.payload.str;
                         const ignore_case = lit.len > 0 and lit[lit.len - 1] == 'i';
-                        var copy = try allocator.dupe(u8, lit[1..lit.len - 1 - @intFromBool(ignore_case)]);
+                        var copy = try allocator.dupe(u8, lit[1 .. lit.len - 1 - @intFromBool(ignore_case)]);
                         defer allocator.free(copy);
                         var reps: usize = 0;
                         reps += std.mem.replace(u8, copy, "\\a", "\x07", copy);
@@ -598,7 +596,7 @@ const Compiler = struct {
                         reps += std.mem.replace(u8, copy, "\\v", "\x0B", copy);
                         reps += std.mem.replace(u8, copy, "\\f", "\x0C", copy);
                         reps += std.mem.replace(u8, copy, "\\r", "\r", copy);
-                        break :blk try machine.Mutable.fromSlice(u8, allocator, copy[0..copy.len - reps], ignore_case);
+                        break :blk try machine.Mutable.fromSlice(u8, allocator, copy[0 .. copy.len - reps], ignore_case);
                     };
                     try stack.append(allocator, fsm);
                 },
@@ -611,7 +609,7 @@ const Compiler = struct {
                 },
                 .RE_SqOpen, .RE_SqOpenNeg => {
                     const marker = tokens.marker();
-                    _ = try tokens.untilClosed(&.{.RE_SqOpen, .RE_SqOpenNeg}, .RE_SqClose);
+                    _ = try tokens.untilClosed(&.{ .RE_SqOpen, .RE_SqOpenNeg }, .RE_SqClose);
                     var iter: TokenIterator = .{ .tokens = tokens.capture(marker, 1) };
                     try stack.append(allocator, try self.compileUnion(allocator, &iter, tok.type == .RE_SqOpenNeg, false));
                 },
@@ -620,7 +618,7 @@ const Compiler = struct {
                     defer a.deinit(allocator);
                     var b = stack.pop();
                     defer b.deinit(allocator);
-                    try stack.append(allocator, try machine.Mutable.combine(allocator, &.{ a, b }, .{.mode = .@"union"}));
+                    try stack.append(allocator, try machine.Mutable.combine(allocator, &.{ a, b }, .{ .mode = .@"union" }));
                 },
                 // TODO: handle intersection
                 // TODO: handle difference
@@ -638,7 +636,7 @@ const Compiler = struct {
                         defer zero.deinit(allocator);
                         var popd = stack.pop();
                         defer popd.deinit(allocator);
-                        try stack.append(allocator, try machine.Mutable.combine(allocator, &.{ popd, zero }, .{.mode = .@"union"}));
+                        try stack.append(allocator, try machine.Mutable.combine(allocator, &.{ popd, zero }, .{ .mode = .@"union" }));
                     },
                     .TK_Negation => last.applyNegation(),
                     else => try self.emitError(tok),
@@ -646,7 +644,7 @@ const Compiler = struct {
             }
         }
 
-        return machine.Mutable.combine(allocator, stack.items, .{.mode = .concatetate});
+        return machine.Mutable.combine(allocator, stack.items, .{ .mode = .concatetate });
     }
 
     fn compileScanner(self: *@This(), allocator: std.mem.Allocator, namespace: []const u8, tokens: *TokenIterator) !scanner.Mutable {
@@ -654,7 +652,7 @@ const Compiler = struct {
         errdefer scan.deinit(allocator);
         while (tokens.peek(0) != null) {
             const marker = tokens.marker();
-            const delim = try tokens.untilType(&.{.TK_DoubleArrow, .TK_SemiColon});
+            const delim = try tokens.untilType(&.{ .TK_DoubleArrow, .TK_SemiColon });
             const expr = try postfixToInfix(allocator, tokens.capture(marker, 1));
             defer allocator.free(expr);
             var iter: TokenIterator = .{ .tokens = expr };
@@ -674,7 +672,7 @@ const Compiler = struct {
     fn compile(allocator: std.mem.Allocator, tokens: *TokenIterator, _: Options) ![]Instanced {
         var compiler = try @This().init(allocator);
         defer compiler.deinit(allocator);
-        log.warn("{s}", .{std.json.fmt(tokens.tokens, .{.whitespace = .indent_1})});
+        log.warn("{s}", .{std.json.fmt(tokens.tokens, .{ .whitespace = .indent_1 })});
 
         var mname: ?[]const u8 = null;
         while (tokens.next()) |tok| switch (tok.type) {
@@ -693,13 +691,11 @@ const Compiler = struct {
                 try compiler.declare(allocator, .{
                     .namespace = mname.?,
                     .name = name.payload.str,
-                    .value = .{ .action = .{
-                        .body = tokens.capture(marker, 1)
-                    }},
+                    .value = .{ .action = .{ .body = tokens.capture(marker, 1) } },
                 });
             },
             .TK_Word => {
-                const kind = try tokens.nextOfType(&.{.TK_Equals, .TK_ColonEquals, .TK_BarEquals});
+                const kind = try tokens.nextOfType(&.{ .TK_Equals, .TK_ColonEquals, .TK_BarEquals });
                 const is_scanner = blk: {
                     if (kind.type != .TK_ColonEquals) break :blk false;
                     break :blk if (tokens.peek(0)) |next| next.type == .TK_BarStar else false;
@@ -710,7 +706,7 @@ const Compiler = struct {
                 if (is_scanner) _ = try tokens.untilType(&.{.TK_StarBar});
                 const body = tokens.capture(marker, 1);
                 log.info("expr {s}:", .{tok.payload.str});
-                log.info("{}", .{std.json.fmt(body, .{.whitespace = .indent_2})});
+                log.info("{}", .{std.json.fmt(body, .{ .whitespace = .indent_2 })});
                 switch (kind.type) {
                     .TK_Equals => try compiler.declare(allocator, .{
                         .namespace = mname.?,
@@ -785,7 +781,7 @@ pub const Options = struct {};
 pub const Instanced = struct {
     namespace: []const u8,
     name: []const u8,
-    value: union (enum) {
+    value: union(enum) {
         machine: machine.Mutable,
         scanner: scanner.Mutable,
     },
@@ -810,7 +806,7 @@ pub const Result = struct {
 pub fn compile(allocator: std.mem.Allocator, slice: []const u8, opts: Options) !Result {
     const result = try rl_scanner.parse(allocator, slice);
     defer result.deinit(allocator);
-    var iter = TokenIterator{.tokens = result.tokens};
+    var iter = TokenIterator{ .tokens = result.tokens };
     return .{ .instanced = try Compiler.compile(allocator, &iter, opts) };
 }
 

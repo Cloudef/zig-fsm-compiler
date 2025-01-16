@@ -27,7 +27,7 @@ pub const TokenType = enum {
     KW_GetKey,
     KW_Goto,
     KW_Hold,
-	KW_Write,
+    KW_Write,
     KW_Import,
     KW_Include,
     KW_InWhen,
@@ -141,7 +141,7 @@ pub const TokenType = enum {
 
 pub const Token = struct {
     type: TokenType,
-    payload: union (enum) {
+    payload: union(enum) {
         none: void,
         chr: u8,
         str: []const u8,
@@ -149,14 +149,14 @@ pub const Token = struct {
 
     pub fn isTransition(self: @This()) bool {
         return self.type == .TK_Gt or
-               self.type == .TK_At or
-               self.type == .TK_Dollar or
-               self.type == .TK_Percent;
+            self.type == .TK_At or
+            self.type == .TK_Dollar or
+            self.type == .TK_Percent;
     }
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         return switch (self.payload) {
-            .none => writer.print("{}", .{ self.type }),
+            .none => writer.print("{}", .{self.type}),
             .str => |str| writer.print("{}, {s}", .{ self.type, str }),
             .chr => |chr| writer.print("{}, {c}", .{ self.type, chr }),
         };
@@ -193,7 +193,7 @@ fn emitTokenZig(state: *State, ctype: c.TokenType, lit: [*c]const u8, is_char: b
         if (state.is_transition_paren and token == .TK_ParenClose) {
             try state.tokens.append(state.allocator, .{ .type = .TK_ParenTransitionClose });
             state.is_transition_paren = false;
-        } else if (token == .TK_ParenOpen and state.tokens.items.len > 0 and state.tokens.items[state.tokens.items.len-1].isTransition()) {
+        } else if (token == .TK_ParenOpen and state.tokens.items.len > 0 and state.tokens.items[state.tokens.items.len - 1].isTransition()) {
             try state.tokens.append(state.allocator, .{ .type = .TK_ParenTransitionOpen });
             state.is_transition_paren = true;
         } else {
@@ -205,7 +205,9 @@ fn emitTokenZig(state: *State, ctype: c.TokenType, lit: [*c]const u8, is_char: b
 fn emitToken(scanner: [*c]c.Scanner, ctype: c.TokenType, lit: [*c]const u8, is_char: bool) callconv(.C) void {
     var state: *State = @alignCast(@ptrCast(scanner.*.ptr.?));
     if (state.failed != null) return;
-    emitTokenZig(state, ctype, lit, is_char) catch |err| { state.failed = err; };
+    emitTokenZig(state, ctype, lit, is_char) catch |err| {
+        state.failed = err;
+    };
 }
 
 fn emitError(scanner: [*c]c.Scanner, msg: [*c]const u8) callconv(.C) void {

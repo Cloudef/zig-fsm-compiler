@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     lib.installHeadersDirectory(b.path("src/compiler/todo-replace"), "", .{});
-    lib.addCSourceFile(.{ .file = b.path("src/compiler/todo-replace/rlscan.c"), .flags = &.{ "-std=c99" } });
+    lib.addCSourceFile(.{ .file = b.path("src/compiler/todo-replace/rlscan.c"), .flags = &.{"-std=c99"} });
 
     const mod = b.addModule("fsm-compiler", .{
         .root_source_file = b.path("src/compiler/compiler.zig"),
@@ -50,10 +50,7 @@ pub fn build(b: *std.Build) void {
             "src/common/common.zig",
             "src/compiler/compiler.zig",
         }) |src| {
-            const tst = b.addTest(.{
-                .root_source_file = b.path(src),
-                .target = target, .optimize = optimize
-            });
+            const tst = b.addTest(.{ .root_source_file = b.path(src), .target = target, .optimize = optimize });
             tst.linkLibrary(lib);
             const run = b.addRunArtifact(tst);
             run_test.dependOn(&run.step);
