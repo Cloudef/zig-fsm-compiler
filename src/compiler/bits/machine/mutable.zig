@@ -567,6 +567,13 @@ fn inheritState(self: *@This(), allocator: std.mem.Allocator, src: StateScalar, 
     log.debug("copy {} -> {}", .{ src, dst });
     if (self.final.isSet(src)) self.final.set(dst);
 
+    var state_it = self.states.iterator(.{ .kind = .set, .direction = .forward });
+    while (state_it.next()) |index| {
+        const from = index / self.num_states;
+        const to = index % self.num_states;
+        if (from == src) self.connect(dst, to) catch {};
+    }
+
     var event_it = self.eventTransitionIterator();
     while (event_it.nextFromState(src)) |t| {
         if (t.detail.to == t.from) {
@@ -582,13 +589,6 @@ fn inheritState(self: *@This(), allocator: std.mem.Allocator, src: StateScalar, 
                 .to = if (t.detail.to == t.from) dst else t.detail.to,
             },
         });
-    }
-
-    var state_it = self.states.iterator(.{ .kind = .set, .direction = .forward });
-    while (state_it.next()) |index| {
-        const from = index / self.num_states;
-        const to = index % self.num_states;
-        if (from == src) self.connect(dst, to) catch {};
     }
 }
 
